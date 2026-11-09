@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WGD Lite (Preact)</title>
+<style>
+  :root{
+    --bg:#f5f6f7; --panel:#ffffff; --panel2:#f2f2f2; --line:#d6d8da;
+    --fg:#16181d; --muted:#5c6470; --accent:#d70a53; --ok:#157a3f; --bad:#b7323c;
+    --radius:4px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%}
+  body{background:var(--bg);color:var(--fg);
+    font:13px/1.5 "DejaVu Sans",Verdana,Helvetica,Arial,sans-serif}
+  button{font:inherit;cursor:pointer}
+  input,select,textarea{background:#ffffff;color:var(--fg);border:1px solid var(--line);
+    border-radius:var(--radius);padding:8px 10px;width:100%;outline:none}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+  label{display:block;font-size:12px;color:var(--muted);margin:0 0 4px}
+  .btn{background:#ffffff;color:var(--fg);border:1px solid var(--line);border-radius:var(--radius);padding:8px 12px}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.danger{border-color:var(--bad);color:var(--bad)}
+  .btn.small{padding:4px 8px;font-size:12px}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .hidden{display:none !important}
+  .muted{color:var(--muted)}
+  .spacer{flex:1}
+
+  #login{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:22px;width:100%;max-width:380px}
+  .card h1{margin:0 0 4px;font-size:19px}
+  .card p.sub{margin:0 0 16px;color:var(--muted);font-size:12px}
+  .field{margin-bottom:12px}
+  details summary{cursor:pointer;color:var(--muted);font-size:12px;margin:6px 0 12px}
+  .err{color:var(--bad);font-size:12px;min-height:16px;margin-top:6px}
+
+  #app{display:flex;flex-direction:column;height:100%}
+  header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 16px;
+    border-bottom:3px solid var(--accent);background:var(--panel)}
+  header .brand{font-weight:700;letter-spacing:.3px;display:flex;align-items:center;gap:8px}
+  header .brand svg{width:20px;height:20px;display:block}
+  header select{width:auto;min-width:160px}
+  .tlink{background:none;border:none;padding:2px 2px;font:inherit;font-size:13px;color:var(--accent);cursor:pointer}
+  .tlink:hover{text-decoration:underline}
+  .tlink.danger{color:var(--bad)}
+  .tsep{color:var(--line)}
+  textarea{font:12px/1.5 ui-monospace,Consolas,Menlo,monospace}
+  .statscanvas{width:100%;height:240px;margin-bottom:10px}
+  .statsum{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block;margin-right:6px}
+  .dot.on{background:var(--ok)} .dot.off{background:var(--bad)}
+  .tab{background:transparent;border:1px solid transparent;color:var(--muted);padding:5px 12px;border-radius:var(--radius)}
+  .tab.active{background:var(--panel2);color:var(--fg);border-color:var(--line)}
+  main{flex:1;overflow:auto;padding:16px}
+  .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+
+  .pill{font-size:12px;font-weight:normal;color:var(--muted)}
+  .pill.ok{color:var(--ok)}
+  .switch{position:relative;width:30px;height:16px;background:#c9cdd3;border:1px solid var(--muted);
+    border-radius:3px;padding:0;cursor:pointer;vertical-align:middle}
+  .switch::after{content:"";position:absolute;top:1px;left:1px;width:12px;height:12px;
+    background:#ffffff;border:1px solid var(--muted);border-radius:2px;transition:left .12s}
+  .switch.on{background:var(--ok);border-color:var(--ok)}
+  .switch.on::after{left:15px;border-color:var(--ok)}
+  .switch:hover{border-color:var(--accent)}
+
+  table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line)}
+  th,td{padding:6px 8px;text-align:left;border:1px solid var(--line);font-size:12px;white-space:nowrap}
+  th{background:var(--panel2);color:var(--fg);font-weight:bold;font-size:12px}
+  tr.sel{background:#fbe7ef}
+  td.actions{text-align:right}
+  td.actions .btn{margin-left:6px;background:none;border:none;color:var(--accent);
+    padding:2px 2px;font-size:12px;border-radius:0}
+  td.actions .btn:hover{text-decoration:underline;border-color:transparent}
+  td.actions .btn:first-child{margin-left:0}
+  .empty{padding:40px;text-align:center;color:var(--muted)}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px}
+  .stat .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .stat .v{font-size:22px;font-weight:700;margin-top:4px}
+  .stat .v small{font-size:12px;font-weight:400;color:var(--muted)}
+  canvas{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius)}
+  .trafficbar{display:flex;gap:12px;align-items:stretch;margin-bottom:14px}
+  .trafficbar canvas{flex:1;min-width:0;height:110px}
+  .tside{display:flex;flex-direction:column;gap:8px;width:180px}
+  .stat.slim{padding:8px 12px;display:flex;align-items:baseline;justify-content:space-between}
+  .stat.slim .k{margin:0}
+  .stat.slim .v{font-size:15px;margin:0}
+  pre.conf{background:var(--panel2);border:1px solid var(--line);border-radius:var(--radius);padding:12px;
+    font:12px/1.5 ui-monospace,Consolas,Menlo,monospace;overflow:auto;max-height:50vh;
+    white-space:pre-wrap;word-break:break-all;margin:0}
+  .legend{display:flex;gap:16px;margin:8px 0 16px;font-size:12px;color:var(--muted)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px}
+
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);width:100%;max-width:520px;max-height:90vh;display:flex;flex-direction:column}
+  .modal .head{display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line)}
+  .modal .head h3{margin:0;font-size:15px}
+  .modal .head .x{margin-left:auto;background:none;border:none;color:var(--muted);font-size:18px}
+  .modal .body{padding:16px;overflow:auto}
+  .modal .foot{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+  #toast{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:99}
+  .toast{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--accent);
+    border-radius:var(--radius);padding:10px 14px;max-width:340px;font-size:13px}
+  .toast.bad{border-left-color:var(--bad)} .toast.ok{border-left-color:var(--ok)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+/* WireGuard keypair generation (curve25519), extracted from WGDashboard's wireguard.js (Apache-2.0) */
+(function(){
+	function gf(init) {
+		var r = new Float64Array(16);
+		if (init) {
+			for (var i = 0; i < init.length; ++i)
+				r[i] = init[i];
+		}
+		return r;
+	}
+
+	function pack(o, n) {
+		var b, m = gf(), t = gf();
+		for (var i = 0; i < 16; ++i)
+			t[i] = n[i];
+		carry(t);
+		carry(t);
+		carry(t);
+		for (var j = 0; j < 2; ++j) {
+			m[0] = t[0] - 0xffed;
+			for (var i = 1; i < 15; ++i) {
+				m[i] = t[i] - 0xffff - ((m[i - 1] >> 16) & 1);
+				m[i - 1] &= 0xffff;
+			}
+			m[15] = t[15] - 0x7fff - ((m[14] >> 16) & 1);
+			b = (m[15] >> 16) & 1;
+			m[14] &= 0xffff;
+			cswap(t, m, 1 - b);
+		}
+		for (var i = 0; i < 16; ++i) {
+			o[2 * i] = t[i] & 0xff;
+			o[2 * i + 1] = t[i] >> 8;
+		}
+	}
+
+	function carry(o) {
+		var c;
+		for (var i = 0; i < 16; ++i) {
+			o[(i + 1) % 16] += (i < 15 ? 1 : 38) * Math.floor(o[i] / 65536);
+			o[i] &= 0xffff;
+		}
+	}
+
+	function cswap(p, q, b) {
+		var t, c = ~(b - 1);
+		for (var i = 0; i < 16; ++i) {
+			t = c & (p[i] ^ q[i]);
+			p[i] ^= t;
+			q[i] ^= t;
+		}
+	}
+
+	function add(o, a, b) {
+		for (var i = 0; i < 16; ++i)
+			o[i] = (a[i] + b[i]) | 0;
+	}
+
+	function subtract(o, a, b) {
+		for (var i = 0; i < 16; ++i)
+			o[i] = (a[i] - b[i]) | 0;
+	}
+
+	function multmod(o, a, b) {
+		var t = new Float64Array(31);
+		for (var i = 0; i < 16; ++i) {
+			for (var j = 0; j < 16; ++j)
+				t[i + j] += a[i] * b[j];
+		}
+		for (var i = 0; i < 15; ++i)
+			t[i] += 38 * t[i + 16];
+		for (var i = 0; i < 16; ++i)
+			o[i] = t[i];
+		carry(o);
+		carry(o);
+	}
+
+	function invert(o, i) {
+		var c = gf();
+		for (var a = 0; a < 16; ++a)
+			c[a] = i[a];
+		for (var a = 253; a >= 0; --a) {
+			multmod(c, c, c);
+			if (a !== 2 && a !== 4)
+				multmod(c, c, i);
+		}
+		for (var a = 0; a < 16; ++a)
+			o[a] = c[a];
+	}
+
+	function clamp(z) {
+		z[31] = (z[31] & 127) | 64;
+		z[0] &= 248;
+	}
+
+	function generatePublicKey(privateKey) {
+		var r, z = new Uint8Array(32);
+		var a = gf([1]),
+			b = gf([9]),
+			c = gf(),
+			d = gf([1]),
+			e = gf(),
+			f = gf(),
+			_121665 = gf([0xdb41, 1]),
+			_9 = gf([9]);
+		for (var i = 0; i < 32; ++i)
+			z[i] = privateKey[i];
+		clamp(z);
+		for (var i = 254; i >= 0; --i) {
+			r = (z[i >>> 3] >>> (i & 7)) & 1;
+			cswap(a, b, r);
+			cswap(c, d, r);
+			add(e, a, c);
+			subtract(a, a, c);
+			add(c, b, d);
+			subtract(b, b, d);
+			multmod(d, e, e);
+			multmod(f, a, a);
+			multmod(a, c, a);
+			multmod(c, b, e);
+			add(e, a, c);
+			subtract(a, a, c);
+			multmod(b, a, a);
+			subtract(c, d, f);
+			multmod(a, c, _121665);
+			add(a, a, d);
+			multmod(c, c, a);
+			multmod(a, d, f);
+			multmod(d, b, _9);
+			multmod(b, e, e);
+			cswap(a, b, r);
+			cswap(c, d, r);
+		}
+		invert(c, c);
+		multmod(a, a, c);
+		pack(z, a);
+		return z;
+	}
+
+	function generatePresharedKey() {
+		var privateKey = new Uint8Array(32);
+		window.crypto.getRandomValues(privateKey);
+		return privateKey;
+	}
+
+	function generatePrivateKey() {
+		var privateKey = generatePresharedKey();
+		clamp(privateKey);
+		return privateKey;
+	}
+
+	function encodeBase64(dest, src) {
+		var input = Uint8Array.from([(src[0] >> 2) & 63, ((src[0] << 4) | (src[1] >> 4)) & 63, ((src[1] << 2) | (src[2] >> 6)) & 63, src[2] & 63]);
+		for (var i = 0; i < 4; ++i)
+			dest[i] = input[i] + 65 +
+			(((25 - input[i]) >> 8) & 6) -
+			(((51 - input[i]) >> 8) & 75) -
+			(((61 - input[i]) >> 8) & 15) +
+			(((62 - input[i]) >> 8) & 3);
+	}
+
+	function keyToBase64(key) {
+		var i, base64 = new Uint8Array(44);
+		for (i = 0; i < 32 / 3; ++i)
+			encodeBase64(base64.subarray(i * 4), key.subarray(i * 3));
+		encodeBase64(base64.subarray(i * 4), Uint8Array.from([key[i * 3 + 0], key[i * 3 + 1], 0]));
+		base64[43] = 61;
+		return String.fromCharCode.apply(null, base64);
+	}
+
+	function base64ToKey(base64) {
+		let binary_string = window.atob(base64);
+		let len = binary_string.length;
+		let bytes = new Uint8Array(len);
+		for (let i = 0; i < len; i++) {
+			bytes[i] = binary_string.charCodeAt(i);
+		}
+		let uint8 = new Uint8Array(bytes.buffer);
+		return uint8;
+	}
+globalThis.wgkey = {
+  generateKeypair: function() {
+    var priv = generatePrivateKey();
+    var pub = generatePublicKey(priv);
+    var psk = generatePresharedKey();
+    return { publicKey: keyToBase64(pub), privateKey: keyToBase64(priv), presharedKey: keyToBase64(psk) };
+  },
+  pub: function(privB64) {
+    var priv = base64ToKey(privB64);
+    return keyToBase64(generatePublicKey(priv));
+  }
+};
+})();
+</script>
+
+<script type="module">
+import { h, render, Fragment } from "https://esm.sh/preact@10.29.8";
+import { useState, useEffect, useRef, useCallback } from "https://esm.sh/preact@10.29.8/hooks";
+import htm from "https://esm.sh/htm@3.1.1";
+const html = htm.bind(h);
+
+/* ================= settings + api ================= */
+const settings = {
+  base: localStorage.getItem("wgd_base") || "",
+  apiKey: localStorage.getItem("wgd_apikey") || "",
+};
+const apiUrl = (p) => ((settings.base || "").replace(/\/+$/, "")) + p;
+
+async function api(path, opts = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (settings.apiKey) headers["wg-dashboard-apikey"] = settings.apiKey;
+  const res = await fetch(apiUrl(path), {
+    method: opts.method || "GET",
+    headers,
+    credentials: settings.apiKey ? "omit" : "include",
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  if (res.status === 401) throw Object.assign(new Error("Unauthorized"), { unauthorized: true });
+  let json;
+  try { json = await res.json(); } catch { throw new Error("Bad response from server"); }
+  return json;
+}
+
+/* ================= helpers ================= */
+const MAX_SAMPLES = 60;
+function fmtRate(v) {
+  if (v == null) return "—";
+  if (v >= 1) return v.toFixed(2) + " MB/s";
+  if (v >= 0.001) return (v * 1000).toFixed(0) + " KB/s";
+  return "0 KB/s";
+}
+function fmtGB(v) {
+  v = Number(v) || 0;
+  if (v >= 1024) return (v / 1024).toFixed(2) + " TB";
+  if (v >= 1) return v.toFixed(2) + " GB";
+  if (v >= 1 / 1024) return (v * 1024).toFixed(1) + " MB";
+  return (v * 1024 * 1024).toFixed(0) + " KB";
+}
+
+/* tiny toast bus */
+let notify = () => {};
+const toast = (msg, kind) => notify(msg, kind);
+function Toasts() {
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    notify = (msg, kind) => {
+      const id = Math.random().toString(36).slice(2);
+      setItems((t) => [...t, { id, msg, kind }]);
+      setTimeout(() => setItems((t) => t.filter((x) => x.id !== id)), 4000);
+    };
+    return () => { notify = () => {}; };
+  }, []);
+  return html`<div id="toast">${items.map((t) =>
+    html`<div key=${t.id} class=${"toast" + (t.kind ? " " + t.kind : "")}>${t.msg}</div>`)}</div>`;
+}
+
+/* ================= root ================= */
+function Root() {
+  const [authed, setAuthed] = useState(null);
+  const [loginMsg, setLoginMsg] = useState("");
+
+  const check = useCallback(async () => {
+    try {
+      // NOTE: /api/validateAuthentication only checks the session cookie, not the API key.
+      // With an API key we must probe an endpoint that actually requires auth.
+      const r = settings.apiKey
+        ? await api("/api/getWireguardConfigurations")
+        : await api("/api/validateAuthentication");
+      setAuthed(!!r.status);
+      if (!r.status) setLoginMsg("");
+    } catch { setAuthed(false); }
+  }, []);
+
+  useEffect(() => { check(); }, [check]);
+
+  const logout = async () => {
+    try { await api("/api/signout"); } catch {}
+    settings.apiKey = "";
+    localStorage.removeItem("wgd_apikey");
+    setLoginMsg("Signed out");
+    setAuthed(false);
+  };
+
+  let view;
+  if (authed === null) view = html`<div id="login"><div class="card"><h1>WGD Lite</h1><p class="sub">connecting…</p></div></div>`;
+  else if (!authed) view = html`<${Login} msg=${loginMsg} onSuccess=${() => { setLoginMsg(""); setAuthed(true); }} />`;
+  else view = html`<${Main} onLogout=${logout} />`;
+
+  return html`<${Fragment}>${view}<${Toasts} /></${Fragment}>`;
+}
+
+/* ================= login ================= */
+function Login({ msg, onSuccess }) {
+  const [base, setBase] = useState(settings.base);
+  const [key, setKey] = useState(settings.apiKey);
+  const [user, setUser] = useState("");
+  const [pass, setPass] = useState("");
+  const [totp, setTotp] = useState("");
+  const [err, setErr] = useState(msg || "");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true); setErr("");
+    settings.base = base.trim();
+    settings.apiKey = key.trim();
+    localStorage.setItem("wgd_base", settings.base);
+    localStorage.setItem("wgd_apikey", settings.apiKey);
+    try {
+      if (settings.apiKey) {
+        const r = await api("/api/getWireguardConfigurations");
+        if (!r.status) throw new Error("Invalid API key");
+      } else {
+        const r = await api("/api/authenticate", {
+          method: "POST",
+          body: { username: user, password: pass, totp },
+        });
+        if (!r.status) throw new Error(r.message || "Login failed");
+      }
+      onSuccess();
+    } catch (e2) {
+      setErr(e2.message || "Login failed");
+    } finally { setBusy(false); }
+  };
+
+  return html`
+  <div id="login">
+    <form class="card" onSubmit=${submit}>
+      <h1>WGD Lite</h1>
+      <p class="sub">A tiny Preact front-end for your WGDashboard backend.</p>
+      <div class="field"><label>Username</label>
+        <input value=${user} autocomplete="username" autofocus onInput=${(e) => setUser(e.target.value)} /></div>
+      <div class="field"><label>Password</label>
+        <input type="password" value=${pass} autocomplete="current-password" onInput=${(e) => setPass(e.target.value)} /></div>
+      <div class="field"><label>TOTP code (only if enabled)</label>
+        <input value=${totp} inputmode="numeric" onInput=${(e) => setTotp(e.target.value)} /></div>
+      <details>
+        <summary>Advanced connection settings</summary>
+        <div class="field"><label>Server URL (blank = same origin)</label>
+          <input value=${base} placeholder="https://10.0.0.1:10086" onInput=${(e) => setBase(e.target.value)} /></div>
+        <div class="field"><label>API key (instead of password, for cross-origin use)</label>
+          <input value=${key} placeholder="optional" onInput=${(e) => setKey(e.target.value)} /></div>
+      </details>
+      <button class="btn primary" style="width:100%" disabled=${busy}>${busy ? "Signing in…" : "Sign in"}</button>
+      <div class="err">${err}</div>
+    </form>
+  </div>`;
+}
+
+/* ================= main ================= */
+function Main({ onLogout }) {
+  const [configs, setConfigs] = useState([]);
+  const [config, setConfig] = useState("");
+  const [peers, setPeers] = useState([]);
+  const [restricted, setRestricted] = useState(() => new Set());
+  const [dialog, setDialog] = useState(null); // { mode, peer }
+  const [view, setView] = useState(null); // { name, file }
+  const [peerRates, setPeerRates] = useState({});
+  const [tunnelDialog, setTunnelDialog] = useState(null); // 'new' | 'rename' | 'raw'
+  const [stats, setStats] = useState(null); // peer
+  const [protocols, setProtocols] = useState(["wg"]);
+  const [online, setOnline] = useState(true);
+
+  const loadConfigs = useCallback(async () => {
+    try {
+      const r = await api("/api/getWireguardConfigurations");
+      const list = (r.data || []).slice().sort((a, b) => a.Name.localeCompare(b.Name));
+      setConfigs(list);
+      setConfig((cur) => (list.some((c) => c.Name === cur) ? cur : (list[0] && list[0].Name) || ""));
+    } catch { setOnline(false); }
+  }, []);
+
+  const ratesRef = useRef(null); // { config, t, rows:[{id,rx,tx}] } for per-peer rate deltas
+
+  const loadPeers = useCallback(async (name, keepSelection) => {
+    if (!name) return;
+    try {
+      const r = await api("/api/getWireguardConfigurationInfo?configurationName=" + encodeURIComponent(name));
+      if (!r.status) return;
+      const active = r.data.configurationPeers || [];
+      const restr = r.data.configurationRestrictedPeers || [];
+      setRestricted(new Set(restr.map((p) => p.id)));
+      setPeers(active.concat(restr));
+      setOnline(true);
+
+      // per-peer rate: diff cumulative counters (backend refreshes them every ~10s)
+      const now = Date.now();
+      const rows = active.concat(restr).map((p) => ({
+        id: p.id,
+        rx: (Number(p.total_receive) || 0) + (Number(p.cumu_receive) || 0),
+        tx: (Number(p.total_sent) || 0) + (Number(p.cumu_sent) || 0),
+      }));
+      const prev = ratesRef.current;
+      if (prev && prev.config === name) {
+        const dt = (now - prev.t) / 1000;
+        if (dt > 0) {
+          const pm = new Map(prev.rows.map((x) => [x.id, x]));
+          setPeerRates(Object.fromEntries(rows.map((x) => {
+            const o = pm.get(x.id);
+            return [x.id, {
+              rxps: o ? Math.max(0, (x.rx - o.rx) * 1024 / dt) : null,
+              txps: o ? Math.max(0, (x.tx - o.tx) * 1024 / dt) : null,
+            }];
+          })));
+        }
+      } else {
+        setPeerRates({});
+      }
+      ratesRef.current = { config: name, t: now, rows };
+    } catch { setOnline(false); }
+  }, []);
+
+  useEffect(() => { setPeerRates({}); ratesRef.current = null; }, [config]);
+  useEffect(() => { loadConfigs(); }, [loadConfigs]);
+  useEffect(() => { loadPeers(config, false); }, [config, loadPeers]);
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (config) loadPeers(config, true);
+    }, 10000); // align with backend counter refresh (~10s)
+    return () => clearInterval(t);
+  }, [config, loadPeers]);
+
+  const cfg = configs.find((c) => c.Name === config) || null;
+
+  const togglePeerEnabled = async (peer) => {
+    const disable = !restricted.has(peer.id);
+    const path = disable ? "restrictPeers" : "allowAccessPeers";
+    const r = await api(`/api/${path}/${encodeURIComponent(config)}`, { method: "POST", body: { peers: [peer.id] } });
+    toast(r.status ? (disable ? "Peer disabled" : "Peer enabled") : (r.message || "Failed"), r.status ? "ok" : "bad");
+    if (r.status) loadPeers(config, true);
+  };
+
+  const deletePeer = async (peer) => {
+    if (!confirm(`Delete peer "${peer.name || peer.id}"? This cannot be undone.`)) return;
+    const r = await api(`/api/deletePeers/${encodeURIComponent(config)}`, { method: "POST", body: { peers: [peer.id] } });
+    toast(r.status ? "Peer deleted" : (r.message || "Failed"), r.status ? "ok" : "bad");
+    if (r.status) loadPeers(config, true);
+  };
+
+  const downloadFile = (name, text) => {
+    const blob = new Blob([text], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name + ".conf";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  useEffect(() => {
+    api("/api/protocolsEnabled").then((r) => {
+      if (r.status && Array.isArray(r.data) && r.data.length) setProtocols(r.data);
+    }).catch(() => {});
+  }, []);
+
+  const toggleTunnel = async () => {
+    if (!config) return;
+    const r = await api("/api/toggleWireguardConfiguration?configurationName=" + encodeURIComponent(config));
+    toast(r.status ? "Tunnel " + (r.data ? "started" : "stopped") : (r.message || "Failed"), r.status ? "ok" : "bad");
+    if (r.status) { await loadConfigs(); loadPeers(config, true); }
+  };
+
+  const deleteTunnel = async () => {
+    if (!config) return;
+    if (!confirm(`Delete tunnel "${config}" and ALL its peers? This cannot be undone.`)) return;
+    const r = await api("/api/deleteWireguardConfiguration", { method: "POST", body: { ConfigurationName: config } });
+    toast(r.status ? "Tunnel deleted" : (r.message || "Failed"), r.status ? "ok" : "bad");
+    if (r.status) { await loadConfigs(); }
+  };
+
+  const tunnelDone = async (newName, msg) => {
+    setTunnelDialog(null);
+    toast(msg, "ok");
+    await loadConfigs();
+    if (newName && newName !== config) setConfig(newName);
+    else loadPeers(config, true);
+  };
+
+  const onStats = (peer) => setStats(peer);
+
+  const onDownload = async (peer) => {
+    const r = await api(`/api/downloadPeer/${encodeURIComponent(config)}?id=${encodeURIComponent(peer.id)}`);
+    if (!r.status || !r.data) return toast(r.message || "Download failed", "bad");
+    downloadFile(r.data.fileName || peer.name || "peer", r.data.file);
+  };
+
+  const onView = async (peer) => {
+    const r = await api(`/api/downloadPeer/${encodeURIComponent(config)}?id=${encodeURIComponent(peer.id)}`);
+    if (!r.status || !r.data) return toast(r.message || "Failed to load config", "bad");
+    setView({ name: r.data.fileName || peer.name || "peer", file: r.data.file });
+  };
+
+  return html`
+  <div id="app">
+    <header>
+      <span class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="#d70a53" stroke-width="3" stroke-linecap="round" d="M12 3a9 9 0 1 1-9 9c0-4 3-7 7-7 3 0 5 2 5 5 0 2-1.6 3.6-3.6 3.6-1.6 0-2.9-1.3-2.9-2.9 0-1.2 1-2.2 2.2-2.2"/></svg>WGD Lite</span>
+      <span class="muted"><span class=${"dot " + (online ? "on" : "off")}></span>${online ? "connected" : "disconnected"}</span>
+      <button class="btn small primary" onClick=${() => setDialog({ mode: "add" })}>+ Add peer</button>
+      <span class="muted" style="font-size:12px">${peers.length} peer(s)${cfg ? " · " + cfg.ConnectedPeers + "/" + cfg.TotalPeers : ""}</span>
+      <span class="spacer"></span>
+      <label style="margin:0" class="muted">Tunnel</label>
+      <select value=${config} onChange=${(e) => setConfig(e.target.value)}>
+        ${configs.map((c) => html`<option key=${c.Name} value=${c.Name}>${c.Name + (c.Status ? "" : " (stopped)")}</option>`)}
+      </select>
+      <button class="tlink" onClick=${toggleTunnel}>${cfg && cfg.Status ? "Stop" : "Start"}</button>
+      <span class="tsep">·</span>
+      <button class="tlink" onClick=${() => setTunnelDialog("new")}>New</button>
+      <button class="tlink" onClick=${() => setTunnelDialog("rename")}>Rename</button>
+      <button class="tlink" onClick=${() => setTunnelDialog("raw")}>Raw</button>
+      <button class="tlink danger" onClick=${deleteTunnel}>Delete</button>
+      <button class="btn small" onClick=${() => loadPeers(config, false)}>Refresh</button>
+      <button class="btn small" onClick=${onLogout}>Sign out</button>
+    </header>
+
+    <main>
+      <${TrafficStrip} config=${config} />
+      <${PeersTab} peers=${peers} restricted=${restricted} peerRates=${peerRates}
+               onEdit=${(peer) => setDialog({ mode: "edit", peer })}
+               onView=${onView} onDownload=${onDownload}
+               onToggleEnabled=${togglePeerEnabled} onDelete=${deletePeer} onStats=${onStats} />
+    </main>
+
+    ${dialog ? html`<${PeerDialog} config=${config} mode=${dialog.mode} peer=${dialog.peer}
+        onClose=${() => setDialog(null)} onSaved=${() => { setDialog(null); loadPeers(config, false); }} />` : null}
+
+    ${view ? html`<${ViewDialog} data=${view}
+        onClose=${() => setView(null)}
+        onDownload=${() => downloadFile(view.name, view.file)} />` : null}
+
+    ${tunnelDialog ? html`<${TunnelDialog} mode=${tunnelDialog} config=${config} protocols=${protocols}
+        onClose=${() => setTunnelDialog(null)} onDone=${tunnelDone} />` : null}
+
+    ${stats ? html`<${StatsDialog} config=${config} peer=${stats}
+        onClose=${() => setStats(null)} />` : null}
+  </div>`;
+}
+
+/* ================= view config dialog ================= */
+function ViewDialog({ data, onClose, onDownload }) {
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(data.file);
+      toast("Copied to clipboard", "ok");
+    } catch { toast("Copy failed - select and copy manually", "bad"); }
+  };
+  return html`
+  <div class="overlay" onClick=${(e) => { if (e.target.classList.contains("overlay")) onClose(); }}>
+    <div class="modal">
+      <div class="head"><h3>${data.name}.conf</h3><button type="button" class="x" onClick=${onClose}>✕</button></div>
+      <div class="body"><pre class="conf">${data.file}</pre></div>
+      <div class="foot">
+        <button type="button" class="btn" onClick=${copy}>Copy</button>
+        <button type="button" class="btn" onClick=${onDownload}>Download</button>
+        <button type="button" class="btn primary" onClick=${onClose}>Close</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ================= peers tab ================= */
+function PeersTab({ peers, restricted, peerRates, onEdit, onView, onDownload, onToggleEnabled, onDelete, onStats }) {
+  const rows = peers.slice().sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+
+  return html`
+  <${Fragment}>
+    ${rows.length === 0
+      ? html`<div class="empty">No peers yet. Click “Add peer”.</div>`
+      : html`
+      <table>
+        <thead><tr>
+          <th>Name</th><th>Status</th><th>Enabled</th><th>Allowed IP</th><th>Endpoint</th>
+          <th>Latest handshake</th><th>IN rate</th><th>OUT rate</th><th>RX</th><th>TX</th><th></th>
+        </tr></thead>
+        <tbody>
+        ${rows.map((p) => {
+          const disabled = restricted.has(p.id) || p.restricted;
+          const rx = (Number(p.total_receive) || 0) + (Number(p.cumu_receive) || 0);
+          const tx = (Number(p.total_sent) || 0) + (Number(p.cumu_sent) || 0);
+          return html`
+          <tr key=${p.id}>
+            <td><button type="button" class="tlink" title="Traffic statistics"
+                onClick=${() => onStats(p)}>${p.name || "untitled"}</button></td>
+            <td>${disabled
+              ? html`<span class="pill off">disabled</span>`
+              : p.status === "running"
+                ? html`<span class="pill ok">running</span>`
+                : html`<span class="pill off">stopped</span>`}</td>
+            <td><button type="button" class=${"switch" + (disabled ? "" : " on")}
+                title=${disabled ? "Enable peer" : "Disable peer"}
+                aria-pressed=${!disabled} onClick=${() => onToggleEnabled(p)}></button></td>
+            <td class="muted">${p.allowed_ip}</td>
+            <td class="muted">${p.endpoint || p.remote_endpoint || "—"}</td>
+            <td class="muted">${p.latest_handshake || "—"}</td>
+            <td>${fmtRate(peerRates[p.id] && peerRates[p.id].rxps)}</td>
+            <td>${fmtRate(peerRates[p.id] && peerRates[p.id].txps)}</td>
+            <td>${fmtGB(rx)}</td>
+            <td>${fmtGB(tx)}</td>
+            <td class="actions">
+              <button class="btn" onClick=${() => onView(p)}>View</button>
+              <button class="btn" onClick=${() => onDownload(p)}>Download</button>
+              <button class="btn" onClick=${() => onEdit(p)}>Edit</button>
+              <button class="btn danger" onClick=${() => onDelete(p)}>Delete</button>
+            </td>
+          </tr>`;
+        })}
+        </tbody>
+      </table>`}
+  </${Fragment}>`;
+}
+
+/* ================= peer dialog ================= */
+function Field({ label, hint, value, onInput, ...props }) {
+  return html`<div class="field">
+    <label>${label}${hint ? html` <span class="muted">${hint}</span>` : ""}</label>
+    <input value=${value} onInput=${onInput} ...${props} />
+  </div>`;
+}
+
+function PeerDialog({ config, mode, peer, onClose, onSaved }) {
+  const isAdd = mode === "add";
+  const [form, setForm] = useState(() => ({
+    name: isAdd ? "" : peer.name || "",
+    allowed_ip: isAdd ? "" : peer.allowed_ip || "",
+    public_key: "", private_key: "",
+    DNS: isAdd ? "1.1.1.1" : peer.DNS || "",
+    endpoint_allowed_ip: isAdd ? "0.0.0.0/0" : peer.endpoint_allowed_ip || "",
+    mtu: isAdd ? 1420 : peer.mtu || 0,
+    keepalive: isAdd ? 21 : peer.keepalive || 0,
+    preshared_key: isAdd ? "" : peer.preshared_key || "",
+    notes: isAdd ? "" : peer.notes || "",
+  }));
+  const [ips, setIps] = useState([]);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  useEffect(() => {
+    if (!isAdd) return;
+    api("/api/getAvailableIPs/" + encodeURIComponent(config)).then((r) => {
+      if (r.status && r.data) {
+        const list = [];
+        for (const k of Object.keys(r.data)) list.push(...r.data[k]);
+        setIps(list);
+        setForm((f) => (f.allowed_ip || !list.length ? f : { ...f, allowed_ip: list[0] }));
+      }
+    }).catch(() => {});
+  }, [config, isAdd]);
+
+  const saved = async (e) => {
+    e.preventDefault();
+    setBusy(true); setErr("");
+    try {
+      const base = {
+        name: form.name.trim(), DNS: form.DNS.trim(), endpoint_allowed_ip: form.endpoint_allowed_ip.trim(),
+        mtu: parseInt(form.mtu, 10) || 0, keepalive: parseInt(form.keepalive, 10) || 0,
+        preshared_key: form.preshared_key.trim(), notes: form.notes.trim(),
+      };
+      let r;
+      if (isAdd) {
+        r = await api("/api/addPeers/" + encodeURIComponent(config), {
+          method: "POST",
+          body: { ...base, allowed_ips: form.allowed_ip ? [form.allowed_ip.trim()] : [], allowed_ips_validation: true,
+            public_key: form.public_key.trim(), private_key: form.private_key.trim(), bulkAdd: false },
+        });
+      } else {
+        r = await api("/api/updatePeerSettings/" + encodeURIComponent(config), {
+          method: "POST",
+          body: { ...base, allowed_ip: form.allowed_ip.trim(), id: peer.id, private_key: peer.private_key || "" },
+        });
+      }
+      if (!r.status) throw new Error(r.message || "Save failed");
+      toast(isAdd ? "Peer created" : "Peer updated", "ok");
+      onSaved();
+    } catch (e2) { setErr(e2.message || "Save failed"); } finally { setBusy(false); }
+  };
+
+  const f = (key, extra = {}) => html`<${Field} value=${form[key]} onInput=${set(key)} ...${extra} />`;
+
+  return html`
+  <div class="overlay" onClick=${(e) => { if (e.target.classList.contains("overlay")) onClose(); }}>
+    <form class="modal" onSubmit=${saved}>
+      <div class="head"><h3>${isAdd ? "Add peer" : "Edit peer"}</h3><button type="button" class="x" onClick=${onClose}>✕</button></div>
+      <div class="body">
+        ${f("name", { label: "Name", placeholder: "my-phone" })}
+        ${f("allowed_ip", { label: "Allowed IP", hint: isAdd && ips.length ? `(${ips.length} available)` : null, list: "ipList" })}
+        <datalist id="ipList">${ips.map((ip) => html`<option key=${ip} value=${ip} />`)}</datalist>
+        ${isAdd ? html`<${Fragment}>
+          ${f("public_key", { label: "Public key (blank = generate)", placeholder: "optional" })}
+          ${f("private_key", { label: "Private key (blank = generate)", placeholder: "optional" })}
+        </${Fragment}>` : null}
+        <div class="grid2">
+          ${f("DNS", { label: "DNS" })}
+          ${f("endpoint_allowed_ip", { label: "Endpoint allowed IP" })}
+          ${f("mtu", { label: "MTU", type: "number", min: "0", max: "1460" })}
+          ${f("keepalive", { label: "Persistent keepalive", type: "number", min: "0" })}
+        </div>
+        ${f("preshared_key", { label: "Preshared key", placeholder: "optional" })}
+        ${f("notes", { label: "Notes", placeholder: "optional" })}
+        <div class="err">${err}</div>
+      </div>
+      <div class="foot">
+        <button type="button" class="btn" onClick=${onClose}>Cancel</button>
+        <button class="btn primary" disabled=${busy}>${busy ? "Saving…" : "Save"}</button>
+      </div>
+    </form>
+  </div>`;
+}
+
+/* ================= per-peer traffic stats ================= */
+function StatsDialog({ config, peer, onClose }) {
+  const [range, setRange] = useState(60); // minutes
+  const [rows, setRows] = useState(null); // null = loading
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    let alive = true;
+    setRows(null);
+    api("/api/getPeerTraffics?configurationName=" + encodeURIComponent(config) +
+        "&id=" + encodeURIComponent(peer.id) + "&interval=" + range)
+      .then((r) => { if (alive) setRows(r.status ? (r.data || []) : []); })
+      .catch(() => { if (alive) setRows([]); });
+    return () => { alive = false; };
+  }, [config, peer.id, range]);
+
+  const pts = (rows || []).map((x) => ({
+    t: new Date(String(x.time).replace(" ", "T")).getTime(),
+    rx: (Number(x.cumu_receive) || 0) + (Number(x.total_receive) || 0),
+    tx: (Number(x.cumu_sent) || 0) + (Number(x.total_sent) || 0),
+  })).filter((x) => !isNaN(x.t)).sort((a, b) => a.t - b.t);
+
+  useEffect(() => {
+    const cv = canvasRef.current;
+    if (!cv || pts.length < 2) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = cv.clientWidth, h = cv.clientHeight;
+    cv.width = w * dpr; cv.height = h * dpr;
+    const ctx = cv.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    const minT = pts[0].t, maxT = pts[pts.length - 1].t;
+    const vals = pts.flatMap((x) => [x.rx, x.tx]);
+    let mn = Math.min(...vals), mx = Math.max(...vals);
+    if (mx - mn < 0.01) mx = mn + 0.01;
+    const span = mx - mn; mn -= span * 0.08; mx += span * 0.08;
+
+    const pad = { l: 56, r: 12, t: 10, b: 20 };
+    const X = (t) => pad.l + (w - pad.l - pad.r) * ((t - minT) / Math.max(1, maxT - minT));
+    const Y = (v) => h - pad.b - (h - pad.t - pad.b) * ((v - mn) / (mx - mn));
+
+    ctx.strokeStyle = "#e6e7e9"; ctx.lineWidth = 1;
+    ctx.fillStyle = "#5c6470"; ctx.font = "10px sans-serif";
+    for (let i = 0; i <= 4; i++) {
+      const v = mn + ((mx - mn) * i) / 4;
+      const y = Y(v);
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+      ctx.fillText(v.toFixed(2) + " GB", 4, y + 3);
+    }
+    const fmtT = (t) => { const d = new Date(t); return ("0"+d.getHours()).slice(-2) + ":" + ("0"+d.getMinutes()).slice(-2); };
+    ctx.fillText(fmtT(minT), pad.l, h - 6);
+    const et = fmtT(maxT);
+    ctx.fillText(et, w - pad.r - ctx.measureText(et).width, h - 6);
+
+    const line = (key, color) => {
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+      pts.forEach((x, i) => { i ? ctx.lineTo(X(x.t), Y(x[key])) : ctx.moveTo(X(x.t), Y(x[key])); });
+      ctx.stroke();
+    };
+    line("rx", "#157a3f");
+    line("tx", "#d70a53");
+  }, [pts]);
+
+  const first = pts[0], last = pts[pts.length - 1];
+  const usedRx = first ? Math.max(0, last.rx - first.rx) : 0;
+  const usedTx = first ? Math.max(0, last.tx - first.tx) : 0;
+  const fmtGB = (v) => (v >= 1 ? v.toFixed(2) + " GB" : (v * 1024).toFixed(0) + " MB");
+
+  return html`
+  <div class="overlay" onClick=${(e) => { if (e.target.classList.contains("overlay")) onClose(); }}>
+    <div class="modal" style="max-width:680px">
+      <div class="head"><h3>Traffic: ${peer.name || peer.id.slice(0, 12) + "…"}</h3>
+        <button type="button" class="x" onClick=${onClose}>✕</button></div>
+      <div class="body">
+        <div class="toolbar" style="margin-bottom:8px">
+          <label class="muted" style="margin:0">Period</label>
+          <select style="width:auto" value=${range} onChange=${(e) => setRange(parseInt(e.target.value, 10))}>
+            <option value="30">Last 30 min</option>
+            <option value="60">Last 1 h</option>
+            <option value="360">Last 6 h</option>
+            <option value="1440">Last 24 h</option>
+            <option value="10080">Last 7 d</option>
+          </select>
+          <span class="statsum">
+            <span>↓ in window <b>${fmtGB(usedRx)}</b></span>
+            <span>↑ in window <b>${fmtGB(usedTx)}</b></span>
+            <span>totals ${fmtGB(last ? last.rx : 0)} / ${fmtGB(last ? last.tx : 0)}</span>
+          </span>
+        </div>
+        <canvas ref=${canvasRef} class="statscanvas"></canvas>
+        ${rows === null
+          ? html`<div class="empty">Loading…</div>`
+          : pts.length < 2
+            ? html`<div class="empty">Not enough history yet. The backend logs running peers every ~60s
+                   (peer_tracking must be enabled).</div>`
+            : null}
+      </div>
+      <div class="foot"><button type="button" class="btn primary" onClick=${onClose}>Close</button></div>
+    </div>
+  </div>`;
+}
+
+/* ================= tunnel dialog (new / rename / raw) ================= */
+function TunnelDialog({ mode, config, protocols, onClose, onDone }) {
+  const isNew = mode === "new";
+  const [form, setForm] = useState(() => {
+    if (!isNew) return { NewConfigurationName: config };
+    const kp = wgkey.generateKeypair();
+    return {
+      ConfigurationName: "", Address: "10.66.66.1/24", ListenPort: 51820,
+      Protocol: protocols[0] || "wg", PrivateKey: kp.privateKey, PublicKey: kp.publicKey,
+    };
+  });
+  const [raw, setRaw] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  useEffect(() => {
+    if (mode !== "raw") return;
+    api("/api/getWireguardConfigurationRawFile?configurationName=" + encodeURIComponent(config))
+      .then((r) => { if (r.status) setRaw(r.data.content); else setErr(r.message || "Failed to load"); })
+      .catch((e) => setErr(e.message || "Failed to load"));
+  }, [mode, config]);
+
+  const regen = () => {
+    const kp = wgkey.generateKeypair();
+    setForm((f) => ({ ...f, PrivateKey: kp.privateKey, PublicKey: kp.publicKey }));
+  };
+  const onPrivInput = (e) => {
+    const v = e.target.value.trim();
+    let pub = "";
+    try { if (v) pub = wgkey.pub(v); } catch {}
+    setForm((f) => ({ ...f, PrivateKey: e.target.value, PublicKey: pub }));
+  };
+
+  const save = async (e) => {
+    e.preventDefault();
+    setBusy(true); setErr("");
+    try {
+      let r, doneName = null, msg = "";
+      if (mode === "new") {
+        const name = form.ConfigurationName.trim();
+        if (!name) throw new Error("Name is required");
+        r = await api("/api/addWireguardConfiguration", {
+          method: "POST",
+          body: {
+            ConfigurationName: name,
+            Address: form.Address.trim(),
+            ListenPort: parseInt(form.ListenPort, 10) || 0,
+            PrivateKey: form.PrivateKey.trim(),
+            Protocol: form.Protocol,
+          },
+        });
+        doneName = name; msg = "Tunnel created";
+      } else if (mode === "rename") {
+        const nn = form.NewConfigurationName.trim();
+        if (!nn) throw new Error("New name is required");
+        r = await api("/api/renameWireguardConfiguration", {
+          method: "POST",
+          body: { ConfigurationName: config, NewConfigurationName: nn },
+        });
+        doneName = nn; msg = "Tunnel renamed";
+      } else {
+        if (!raw.trim()) throw new Error("Content is empty");
+        r = await api("/api/updateWireguardConfigurationRawFile", {
+          method: "POST",
+          body: { configurationName: config, rawConfiguration: raw },
+        });
+        doneName = config; msg = "Configuration file saved";
+      }
+      if (!r.status) throw new Error(r.message || "Failed");
+      onDone(doneName, msg);
+    } catch (e2) {
+      setErr(e2.message || "Failed");
+    } finally { setBusy(false); }
+  };
+
+  const title = mode === "new" ? "New tunnel" : mode === "rename" ? "Rename tunnel" : "Edit raw file: " + config;
+  const fld = (label, key, props = {}) => html`<div class="field">
+    <label>${label}</label>
+    <input value=${form[key]} onInput=${set(key)} ...${props} />
+  </div>`;
+
+  return html`
+  <div class="overlay" onClick=${(e) => { if (e.target.classList.contains("overlay")) onClose(); }}>
+    <form class="modal" onSubmit=${save}>
+      <div class="head"><h3>${title}</h3><button type="button" class="x" onClick=${onClose}>✕</button></div>
+      <div class="body">
+        ${mode === "new" ? html`<${Fragment}>
+          ${fld("Name", "ConfigurationName", { placeholder: "wg1", autocomplete: "off" })}
+          ${fld("Address (this interface)", "Address", { placeholder: "10.66.66.1/24" })}
+          ${fld("Listen port", "ListenPort", { type: "number", min: "1", max: "65535" })}
+          <div class="field"><label>Protocol</label>
+            <select value=${form.Protocol} onChange=${set("Protocol")}>
+              ${protocols.map((pr) => html`<option key=${pr} value=${pr}>${pr}</option>`)}
+            </select>
+          </div>
+          <div class="field">
+            <label>Private key <button type="button" class="tlink" onClick=${regen}>regenerate</button></label>
+            <input value=${form.PrivateKey} onInput=${onPrivInput} spellcheck="false" />
+          </div>
+          <div class="field"><label>Public key (from private key)</label>
+            <input value=${form.PublicKey} readonly spellcheck="false" /></div>
+        </${Fragment}>` : null}
+        ${mode === "rename" ? fld("New name", "NewConfigurationName", { autocomplete: "off" }) : null}
+        ${mode === "raw" ? html`<div class="field">
+          <label>Raw configuration file <span class="muted">(peers are preserved; invalid content may break the tunnel)</span></label>
+          <textarea rows="16" value=${raw} onInput=${(e) => setRaw(e.target.value)} spellcheck="false"></textarea>
+        </div>` : null}
+        <div class="err">${err}</div>
+      </div>
+      <div class="foot">
+        <button type="button" class="btn" onClick=${onClose}>Cancel</button>
+        <button class="btn primary" disabled=${busy}>${busy ? "Saving…" : "Save"}</button>
+      </div>
+    </form>
+  </div>`;
+}
+
+/* ================= realtime traffic strip ================= */
+function TrafficStrip({ config }) {
+  const [samples, setSamples] = useState({ sent: [], recv: [] });
+  const [live, setLive] = useState({ sent: 0, recv: 0 });
+  const canvasRef = useRef(null);
+
+  useEffect(() => { setSamples({ sent: [], recv: [] }); }, [config]);
+
+  useEffect(() => {
+    if (!config) return;
+    let alive = true;
+    const tick = async () => {
+      try {
+        const r = await api("/api/getWireguardConfigurationRealtimeTraffic?configurationName=" + encodeURIComponent(config));
+        if (!alive || !r.status || !r.data) return;
+        setLive({ sent: Number(r.data.sent) || 0, recv: Number(r.data.recv) || 0 });
+        setSamples((s) => ({
+          sent: [...s.sent, Number(r.data.sent) || 0].slice(-MAX_SAMPLES),
+          recv: [...s.recv, Number(r.data.recv) || 0].slice(-MAX_SAMPLES),
+        }));
+      } catch {}
+    };
+    tick();
+    const t = setInterval(tick, 5000);
+    return () => { alive = false; clearInterval(t); };
+  }, [config]);
+
+  useEffect(() => {
+    const cv = canvasRef.current;
+    if (!cv) return;
+    const draw = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const w = cv.clientWidth, h = cv.clientHeight;
+      cv.width = w * dpr; cv.height = h * dpr;
+      const ctx = cv.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      const max = Math.max(0.1, ...samples.sent, ...samples.recv);
+      const pad = 8, stepX = (w - pad * 2) / (MAX_SAMPLES - 1);
+      ctx.strokeStyle = "#e6e7e9"; ctx.lineWidth = 1;
+      for (let i = 0; i <= 3; i++) {
+        const y = pad + ((h - pad * 2) * i) / 3;
+        ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - pad, y); ctx.stroke();
+      }
+      ctx.fillStyle = "#5c6470"; ctx.font = "11px sans-serif";
+      ctx.fillText(max.toFixed(2) + " MB/s", pad + 2, pad + 12);
+      const line = (arr, color) => {
+        if (arr.length < 2) return;
+        ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+        arr.forEach((v, i) => {
+          const x = pad + (MAX_SAMPLES - arr.length + i) * stepX;
+          const y = h - pad - ((h - pad * 2) * v) / max;
+          i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        });
+        ctx.stroke();
+      };
+      line(samples.recv, "#157a3f");
+      line(samples.sent, "#d70a53");
+    };
+    draw();
+    window.addEventListener("resize", draw);
+    return () => window.removeEventListener("resize", draw);
+  }, [samples]);
+
+  return html`
+  <div class="trafficbar">
+    <canvas ref=${canvasRef} />
+    <div class="tside">
+      <div class="stat slim"><div class="k">IN</div><div class="v">${live.recv.toFixed(2)}<small> MB/s</small></div></div>
+      <div class="stat slim"><div class="k">OUT</div><div class="v">${live.sent.toFixed(2)}<small> MB/s</small></div></div>
+    </div>
+  </div>`;
+}
+
+render(html`<${Root} />`, document.getElementById("root"));
+</script>
+</body>
+</html>

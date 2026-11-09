@@ -1,0 +1,18 @@
+[Unit]
+Description=WGD-API - minimal WireGuard control API (replaces WGDashboard)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 按你的实际部署路径修改以下各行
+WorkingDirectory=/opt/wgd-api
+Environment=WGD_INI=/opt/wgd-api/wg-dashboard.ini
+Environment=WGD_DB=/opt/wgd-api/db/wgdashboard.db
+Environment=WGD_CONF_DIR=/etc/wireguard
+ExecStart=/opt/wgd-api/venv/bin/waitress-serve --listen=127.0.0.1:51822 --threads=2 wsgi:application
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

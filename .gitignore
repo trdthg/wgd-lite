@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+venv/
+log/
+*.db
+*.ini
+*.pid
+_*.py
+_*.png
+node_modules/
