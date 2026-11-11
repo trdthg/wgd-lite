@@ -466,7 +466,7 @@ function Login({ msg, onSuccess }) {
 /* ================= main ================= */
 function Main({ onLogout }) {
   const [configs, setConfigs] = useState([]);
-  const [config, setConfig] = useState("");
+  const [config, setConfig] = useState(() => decodeURIComponent(location.hash.replace(/^#\/?/, "")));
   const [peers, setPeers] = useState([]);
   const [restricted, setRestricted] = useState(() => new Set());
   const [dialog, setDialog] = useState(null); // { mode, peer }
@@ -527,6 +527,19 @@ function Main({ onLogout }) {
   }, []);
 
   useEffect(() => { setPeerRates({}); ratesRef.current = null; }, [config]);
+  useEffect(() => {
+    if (config) history.replaceState(null, "", "#/" + encodeURIComponent(config));
+  }, [config]);
+  const [monthly, setMonthly] = useState(null); // {month, receive, sent, peers:{id:{receive,sent}}}
+  useEffect(() => {
+    setMonthly(null);
+    if (!config) return;
+    const load = () => api("/api/getWireguardConfigurationMonthlyTraffic?configurationName=" +
+        encodeURIComponent(config)).then((r) => setMonthly(r.status ? r.data : null)).catch(() => {});
+    load();
+    const t = setInterval(load, 60000);
+    return () => clearInterval(t);
+  }, [config]);
   useEffect(() => { loadConfigs(); }, [loadConfigs]);
   useEffect(() => { loadPeers(config, false); }, [config, loadPeers]);
   useEffect(() => {
@@ -628,7 +641,7 @@ function Main({ onLogout }) {
     </header>
 
     <main>
-      <${TrafficStrip} config=${config} />
+      <${TrafficStrip} config=${config} monthly=${monthly} />
       <${PeersTab} peers=${peers} restricted=${restricted} peerRates=${peerRates}
                onEdit=${(peer) => setDialog({ mode: "edit", peer })}
                onView=${onView} onDownload=${onDownload}
@@ -684,7 +697,7 @@ function PeersTab({ peers, restricted, peerRates, onEdit, onView, onDownload, on
       <table>
         <thead><tr>
           <th>Name</th><th>Status</th><th>Enabled</th><th>Allowed IP</th><th>Endpoint</th>
-          <th>Latest handshake</th><th>IN rate</th><th>OUT rate</th><th>RX</th><th>TX</th><th></th>
+          <th>Latest handshake</th><th>IN rate</th><th>OUT rate</th><th>RX (month)</th><th>TX (month)</th><th></th>
         </tr></thead>
         <tbody>
         ${rows.map((p) => {
@@ -708,8 +721,8 @@ function PeersTab({ peers, restricted, peerRates, onEdit, onView, onDownload, on
             <td class="muted">${p.latest_handshake || "—"}</td>
             <td>${fmtRate(peerRates[p.id] && peerRates[p.id].rxps)}</td>
             <td>${fmtRate(peerRates[p.id] && peerRates[p.id].txps)}</td>
-            <td>${fmtGB(rx)}</td>
-            <td>${fmtGB(tx)}</td>
+            <td title="lifetime: ${fmtGB(rx)}">${monthly && monthly.peers[p.id] ? fmtGB(monthly.peers[p.id].receive) : "—"}</td>
+            <td title="lifetime: ${fmtGB(tx)}">${monthly && monthly.peers[p.id] ? fmtGB(monthly.peers[p.id].sent) : "—"}</td>
             <td class="actions">
               <button class="btn" onClick=${() => onView(p)}>View</button>
               <button class="btn" onClick=${() => onDownload(p)}>Download</button>
@@ -1043,7 +1056,7 @@ function TunnelDialog({ mode, config, protocols, onClose, onDone }) {
 }
 
 /* ================= realtime traffic strip ================= */
-function TrafficStrip({ config }) {
+function TrafficStrip({ config, monthly }) {
   const [samples, setSamples] = useState({ sent: [], recv: [] });
   const [live, setLive] = useState({ sent: 0, recv: 0 });
   const canvasRef = useRef(null);
@@ -1112,6 +1125,8 @@ function TrafficStrip({ config }) {
     <div class="tside">
       <div class="stat slim"><div class="k">IN</div><div class="v">${live.recv.toFixed(2)}<small> MB/s</small></div></div>
       <div class="stat slim"><div class="k">OUT</div><div class="v">${live.sent.toFixed(2)}<small> MB/s</small></div></div>
+      <div class="stat slim"><div class="k">RX ${monthly ? monthly.month : ""}</div><div class="v">${monthly ? fmtGB(monthly.receive) : "—"}</div></div>
+      <div class="stat slim"><div class="k">TX ${monthly ? monthly.month : ""}</div><div class="v">${monthly ? fmtGB(monthly.sent) : "—"}</div></div>
     </div>
   </div>`;
 }

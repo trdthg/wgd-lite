@@ -85,14 +85,19 @@ Drop `frontend/index.html` anywhere Caddy can serve, e.g.:
 
 ```caddy
 wg.example.com {
-	handle_path /lite/* {
+	handle /api/* {
+		reverse_proxy 127.0.0.1:51822
+	}
+	handle {
 		root * /opt/wgd-lite
+		try_files {path} /index.html
 		file_server
 	}
-	redir /lite /lite/ 308
-	reverse_proxy 127.0.0.1:51822
 }
 ```
+
+The UI is served at the domain root (`/`); unknown paths fall back to
+`index.html` (SPA-style).
 
 (If you prefer, you can serve the UI from the backend and collapse Caddy to a
 single `reverse_proxy` — see `frontend/index.html` notes.)

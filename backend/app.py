@@ -461,6 +461,54 @@ def realtime_traffic():
     return respond(True, None, wgcore.realtime_traffic(t))
 
 
+@app.get("/api/getWireguardConfigurationMonthlyTraffic")
+def get_monthly_traffic():
+    name = request.args.get("configurationName")
+    t = tunnel(name) if name else None
+    if not t or not t.exists():
+        return respond(False, "Configuration does not exist", None, 404)
+    now = datetime.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    ms = month_start.strftime("%Y-%m-%d %H:%M:%S")
+    with db() as conn:
+        wgcore.ensure_tables(conn, name)
+        cur = conn.cursor()
+        cur.execute(f"SELECT id, total_receive, total_sent, cumu_receive, cumu_sent FROM '{name}'")
+        current = cur.fetchall()
+
+        def baseline(pid):
+            # 1) 当月最早一个采样; 没有(整月没流量)则用上月最后一个采样;
+            #    都没有(新 Peer)视为 0。
+            cur.execute(f"SELECT (cumu_receive + total_receive) AS rx, "
+                        f"(cumu_sent + total_sent) AS tx FROM '{name}_transfer' "
+                        f"WHERE id = ? AND time >= ? ORDER BY time ASC LIMIT 1", (pid, ms))
+            b = cur.fetchone()
+            if b is None:
+                cur.execute(f"SELECT (cumu_receive + total_receive) AS rx, "
+                            f"(cumu_sent + total_sent) AS tx FROM '{name}_transfer' "
+                            f"WHERE id = ? AND time < ? ORDER BY time DESC LIMIT 1", (pid, ms))
+                b = cur.fetchone()
+            if b is None:
+                return 0.0, 0.0
+            return (b["rx"] or 0.0, b["tx"] or 0.0)
+
+        per = {}
+        total_rx = total_tx = 0.0
+        for r in current:
+            b = baseline(r["id"])
+            u_rx = max(0.0, (r["total_receive"] or 0) + (r["cumu_receive"] or 0) - b[0])
+            u_tx = max(0.0, (r["total_sent"] or 0) + (r["cumu_sent"] or 0) - b[1])
+            per[r["id"]] = {"receive": round(u_rx, 3), "sent": round(u_tx, 3)}
+            total_rx += u_rx
+            total_tx += u_tx
+    return respond(True, None, {
+        "month": month_start.strftime("%Y-%m"),
+        "receive": round(total_rx, 3),
+        "sent": round(total_tx, 3),
+        "peers": per,
+    })
+
+
 @app.get("/api/getPeerTraffics")
 def get_peer_traffics():
     name = request.args.get("configurationName")
