@@ -99,6 +99,8 @@
   .stat.slim{padding:8px 12px;display:flex;align-items:baseline;justify-content:space-between}
   .stat.slim .k{margin:0}
   .stat.slim .v{font-size:15px;margin:0}
+  .legendline{display:flex;gap:12px;align-items:center;font-size:11px;color:var(--muted);padding-left:2px}
+  .legendline i{width:8px;height:8px;border-radius:1px;display:inline-block;margin-right:4px;vertical-align:middle}
   pre.conf{background:var(--panel2);border:1px solid var(--line);border-radius:var(--radius);padding:12px;
     font:12px/1.5 ui-monospace,Consolas,Menlo,monospace;overflow:auto;max-height:50vh;
     white-space:pre-wrap;word-break:break-all;margin:0}
@@ -1270,27 +1272,61 @@ function TrafficStrip({ config, monthly }) {
       const ctx = cv.getContext("2d");
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
-      const max = Math.max(0.1, ...samples.sent, ...samples.recv);
-      const pad = 8, stepX = (w - pad * 2) / (MAX_SAMPLES - 1);
-      ctx.strokeStyle = "#e6e7e9"; ctx.lineWidth = 1;
-      for (let i = 0; i <= 3; i++) {
-        const y = pad + ((h - pad * 2) * i) / 3;
-        ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - pad, y); ctx.stroke();
+
+      const pad = { l: 46, r: 10, t: 12, b: 12 };
+      const plotW = Math.max(10, w - pad.l - pad.r);
+      const plotH = Math.max(10, h - pad.t - pad.b);
+      const all = samples.sent.concat(samples.recv);
+
+      // Y window = min/max of the samples on screen (not pinned to 0), plus 20%
+      // headroom, so small variations stay readable instead of hugging the floor.
+      let lo, hi;
+      if (all.length === 0) {
+        lo = 0; hi = 0.1;
+      } else {
+        lo = Math.min.apply(null, all);
+        hi = Math.max.apply(null, all);
+        const raw = hi - lo;
+        const margin = raw > 1e-9 ? raw * 0.2 : Math.max(0.02, Math.abs(hi) * 0.2);
+        lo = Math.max(0, lo - margin);
+        hi = hi + margin;
+        if (hi - lo < 1e-9) hi = lo + 0.1;
       }
-      ctx.fillStyle = "#5c6470"; ctx.font = "11px sans-serif";
-      ctx.fillText(max.toFixed(2) + " MB/s", pad + 2, pad + 12);
+      const Y = (v) => pad.t + plotH - ((v - lo) / (hi - lo)) * plotH;
+
+      // grid + value labels (top / middle / bottom)
+      ctx.font = "10px sans-serif";
+      ctx.lineWidth = 1;
+      for (let k = 0; k < 3; k++) {
+        const v = hi - ((hi - lo) * k) / 2;
+        const y = pad.t + (plotH * k) / 2;
+        ctx.strokeStyle = k === 2 ? "#d6d8da" : "#eceef0";
+        ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+        ctx.fillStyle = "#8a919c";
+        ctx.fillText(v.toFixed(2), 3, y + 3);
+      }
+      const stepX = plotW / (MAX_SAMPLES - 1);
       const line = (arr, color) => {
         if (arr.length < 2) return;
-        ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
-        arr.forEach((v, i) => {
-          const x = pad + (MAX_SAMPLES - arr.length + i) * stepX;
-          const y = h - pad - ((h - pad * 2) * v) / max;
-          i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.8;
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        arr.forEach((v, idx) => {
+          const x = pad.l + (MAX_SAMPLES - arr.length + idx) * stepX;
+          const y = Y(v);
+          idx ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
         });
         ctx.stroke();
       };
       line(samples.recv, "#157a3f");
       line(samples.sent, "#d70a53");
+
+      if (all.length === 0) {
+        ctx.fillStyle = "#a0a6b0";
+        ctx.font = "11px sans-serif";
+        ctx.fillText("collecting…", pad.l + 8, pad.t + plotH / 2);
+      }
     };
     draw();
     window.addEventListener("resize", draw);
@@ -1303,6 +1339,11 @@ function TrafficStrip({ config, monthly }) {
     <div class="tside">
       <div class="stat slim"><div class="k">RX ${monthly ? monthly.month : ""}</div><div class="v">${monthly ? fmtGB(monthly.receive) : "—"}</div></div>
       <div class="stat slim"><div class="k">TX ${monthly ? monthly.month : ""}</div><div class="v">${monthly ? fmtGB(monthly.sent) : "—"}</div></div>
+      <div class="legendline">
+        <span><i style="background:#157a3f"></i>IN</span>
+        <span><i style="background:#d70a53"></i>OUT</span>
+        <span class="muted">MB/s</span>
+      </div>
     </div>
   </div>`;
 }
