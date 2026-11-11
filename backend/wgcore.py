@@ -945,20 +945,28 @@ def download_peer(conn, t, ini_path: str, peer: dict) -> dict:
 # realtime traffic + history (ported)
 # ---------------------------------------------------------------------------
 
+_rt_cache = {}  # tunnel name -> (timestamp, bytes_sent, bytes_recv)
+
+
 def realtime_traffic(t) -> dict:
-    """Ported from upstream getRealtimeTrafficUsage() (MB/s, 1s window)."""
+    """Rate from in-memory deltas - no sleep, never holds a worker thread.
+    (upstream slept 1s per call, which starves threads under load)"""
     import psutil
     stats = psutil.net_io_counters(pernic=True, nowrap=True)
     if t.Name not in stats:
         return {"sent": 0, "recv": 0}
-    recv1, sent1 = stats[t.Name].bytes_recv, stats[t.Name].bytes_sent
-    time.sleep(1)
-    stats = psutil.net_io_counters(pernic=True, nowrap=True)
-    if t.Name not in stats:
+    now = time.time()
+    cur = (now, stats[t.Name].bytes_sent, stats[t.Name].bytes_recv)
+    prev = _rt_cache.get(t.Name)
+    _rt_cache[t.Name] = cur
+    if prev is None:
+        return {"sent": 0, "recv": 0}
+    dt = now - prev[0]
+    if dt < 1.0:
         return {"sent": 0, "recv": 0}
     return {
-        "sent": round((stats[t.Name].bytes_sent - sent1) / 1024 / 1024, 3),
-        "recv": round((stats[t.Name].bytes_recv - recv1) / 1024 / 1024, 3),
+        "sent": round(max(0, cur[1] - prev[1]) / 1024 / 1024 / dt, 3),
+        "recv": round(max(0, cur[2] - prev[2]) / 1024 / 1024 / dt, 3),
     }
 
 
