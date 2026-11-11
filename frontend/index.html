@@ -1069,7 +1069,6 @@ function TunnelDialog({ mode, config, protocols, onClose, onDone }) {
 /* ================= realtime traffic strip ================= */
 function TrafficStrip({ config, monthly }) {
   const [samples, setSamples] = useState({ sent: [], recv: [] });
-  const [live, setLive] = useState({ sent: 0, recv: 0 });
   const canvasRef = useRef(null);
 
   useEffect(() => { setSamples({ sent: [], recv: [] }); }, [config]);
@@ -1081,7 +1080,6 @@ function TrafficStrip({ config, monthly }) {
       try {
         const r = await api("/api/getWireguardConfigurationRealtimeTraffic?configurationName=" + encodeURIComponent(config));
         if (!alive || !r.status || !r.data) return;
-        setLive({ sent: Number(r.data.sent) || 0, recv: Number(r.data.recv) || 0 });
         setSamples((s) => ({
           sent: [...s.sent, Number(r.data.sent) || 0].slice(-MAX_SAMPLES),
           recv: [...s.recv, Number(r.data.recv) || 0].slice(-MAX_SAMPLES),
@@ -1138,8 +1136,6 @@ function TrafficStrip({ config, monthly }) {
   <div class="trafficbar">
     <canvas ref=${canvasRef} />
     <div class="tside">
-      <div class="stat slim"><div class="k">IN</div><div class="v">${live.recv.toFixed(2)}<small> MB/s</small></div></div>
-      <div class="stat slim"><div class="k">OUT</div><div class="v">${live.sent.toFixed(2)}<small> MB/s</small></div></div>
       <div class="stat slim"><div class="k">RX ${monthly ? monthly.month : ""}</div><div class="v">${monthly ? fmtGB(monthly.receive) : "—"}</div></div>
       <div class="stat slim"><div class="k">TX ${monthly ? monthly.month : ""}</div><div class="v">${monthly ? fmtGB(monthly.sent) : "—"}</div></div>
     </div>
