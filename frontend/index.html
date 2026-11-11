@@ -536,17 +536,27 @@ function Main({ onLogout }) {
     if (!config) return;
     const load = () => api("/api/getWireguardConfigurationMonthlyTraffic?configurationName=" +
         encodeURIComponent(config)).then((r) => setMonthly(r.status ? r.data : null)).catch(() => {});
-    load();
-    const t = setInterval(load, 60000);
-    return () => clearInterval(t);
+    let alive = true;
+    let timer = null;
+    const loop = async () => {
+      await load();
+      if (alive) timer = setTimeout(loop, 60000);
+    };
+    loop();
+    return () => { alive = false; clearTimeout(timer); };
   }, [config]);
   useEffect(() => { loadConfigs(); }, [loadConfigs]);
   useEffect(() => { loadPeers(config, false); }, [config, loadPeers]);
   useEffect(() => {
-    const t = setInterval(() => {
-      if (config) loadPeers(config, true);
-    }, 10000); // align with backend counter refresh (~10s)
-    return () => clearInterval(t);
+    let alive = true;
+    let timer = null;
+    const tick = async () => {
+      if (!alive) return;
+      if (config) { try { await loadPeers(config, true); } catch {} }
+      if (alive) timer = setTimeout(tick, 15000);
+    };
+    timer = setTimeout(tick, 15000);
+    return () => { alive = false; clearTimeout(timer); };
   }, [config, loadPeers]);
 
   const cfg = configs.find((c) => c.Name === config) || null;
@@ -1077,9 +1087,13 @@ function TrafficStrip({ config, monthly }) {
         }));
       } catch {}
     };
-    tick();
-    const t = setInterval(tick, 5000);
-    return () => { alive = false; clearInterval(t); };
+    let timer = null;
+    const loop = async () => {
+      await tick();
+      if (alive) timer = setTimeout(loop, 5000);
+    };
+    loop();
+    return () => { alive = false; clearTimeout(timer); };
   }, [config]);
 
   useEffect(() => {
