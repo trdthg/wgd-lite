@@ -10,6 +10,8 @@ const path = require("path");
 const PORT = process.env.PORT || 8787;
 const INDEX = path.join(__dirname, "index.html");
 const API_KEY = process.env.API_KEY || "test-key-123";
+let initialized = process.env.UNINITIALIZED !== "1";
+let mockUser = { username: "admin", password: "testpass" };
 
 // CORS mirrors the real backend: origins *, and wg-dashboard-apikey allowed.
 const CORS = {
@@ -101,11 +103,33 @@ const server = http.createServer((req, res) => {
     // ---- auth ----
     // NOTE: real backend's validateAuthentication only checks the session cookie,
     // NOT the API key — mirrored here on purpose.
-    if (p === "/api/validateAuthentication")
-      return j(res, cookieAuthed ? ok(true) : err("Invalid authentication."));
+    if (p === "/api/validateAuthentication") {
+      const r = cookieAuthed ? ok(true) : err("Invalid authentication.");
+      r.data = { initialized };
+      return j(res, r);
+    }
+    if (p === "/api/account") {
+      const b = await body();
+      if (!initialized) {
+        if (!b.username || !b.password || String(b.password).length < 8)
+          return j(res, err("Username is required and password must be at least 8 characters"));
+        mockUser = { username: b.username, password: b.password };
+        initialized = true;
+        res.setHeader("Set-Cookie", "mock_auth=1; Path=/; HttpOnly; SameSite=Lax");
+        return j(res, ok({ username: b.username }));
+      }
+      if (!cookieAuthed) return j(res, err("Unauthorized access.", 401), 401);
+      if (b.current_password !== mockUser.password) return j(res, err("Current password is incorrect"));
+      if (!b.username || !b.password || String(b.password).length < 8)
+        return j(res, err("Username is required and password must be at least 8 characters"));
+      mockUser = { username: b.username, password: b.password };
+      return j(res, ok({ username: b.username }));
+    }
     if (p === "/api/authenticate") {
       const b = await body();
-      if (!b.username || !b.password) return j(res, err("Username and password required"));
+      if (!initialized) return j(res, err("Setup required"));
+      if (b.username !== mockUser.username || b.password !== mockUser.password)
+        return j(res, err("Sorry, your username or password is incorrect."));
       res.setHeader("Set-Cookie", "mock_auth=1; Path=/; HttpOnly; SameSite=Lax");
       return j(res, ok(true));
     }
@@ -113,7 +137,7 @@ const server = http.createServer((req, res) => {
       res.setHeader("Set-Cookie", "mock_auth=; Path=/; Max-Age=0");
       return j(res, ok(true));
     }
-    if (!probeOk) return j(res, err("Unauthorized access.", 401), 401);
+    if (!initialized || !probeOk) return j(res, err("Unauthorized access.", 401), 401);
 
     // ---- configs ----
     if (p === "/api/getWireguardConfigurations") {

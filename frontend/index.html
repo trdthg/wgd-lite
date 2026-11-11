@@ -374,14 +374,21 @@ function Toasts() {
 function Root() {
   const [authed, setAuthed] = useState(null);
   const [loginMsg, setLoginMsg] = useState("");
+  const [needsSetup, setNeedsSetup] = useState(false);
 
   const check = useCallback(async () => {
     try {
       // NOTE: /api/validateAuthentication only checks the session cookie, not the API key.
       // With an API key we must probe an endpoint that actually requires auth.
-      const r = settings.apiKey
-        ? await api("/api/getWireguardConfigurations")
-        : await api("/api/validateAuthentication");
+      if (settings.apiKey) {
+        const r = await api("/api/getWireguardConfigurations");
+        setAuthed(!!r.status);
+        if (!r.status) setLoginMsg("");
+        return;
+      }
+      const r = await api("/api/validateAuthentication");
+      // older backends don't send data -> assume initialized
+      setNeedsSetup(!!(r.data && r.data.initialized === false));
       setAuthed(!!r.status);
       if (!r.status) setLoginMsg("");
     } catch { setAuthed(false); }
@@ -399,10 +406,53 @@ function Root() {
 
   let view;
   if (authed === null) view = html`<div id="login"><div class="card"><h1>WGD Lite</h1><p class="sub">connecting…</p></div></div>`;
+  else if (needsSetup) view = html`<${Setup} onDone=${() => { setNeedsSetup(false); setAuthed(true); }} />`;
   else if (!authed) view = html`<${Login} msg=${loginMsg} onSuccess=${() => { setLoginMsg(""); setAuthed(true); }} />`;
   else view = html`<${Main} onLogout=${logout} />`;
 
   return html`<${Fragment}>${view}<${Toasts} /></${Fragment}>`;
+}
+
+/* ================= first-run setup ================= */
+function Setup({ onDone }) {
+  const [user, setUser] = useState("");
+  const [pass, setPass] = useState("");
+  const [pass2, setPass2] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr("");
+    if (pass.length < 8) return setErr("Password must be at least 8 characters");
+    if (pass !== pass2) return setErr("Passwords do not match");
+    setBusy(true);
+    try {
+      const r = await api("/api/account", { method: "POST", body: { username: user.trim(), password: pass } });
+      if (!r.status) throw new Error(r.message || "Setup failed");
+      toast("Account created", "ok");
+      onDone();
+    } catch (e2) {
+      setErr(e2.message || "Setup failed");
+    } finally { setBusy(false); }
+  };
+
+  return html`
+  <div id="login">
+    <form class="card" onSubmit=${submit}>
+      <h1>WGD Lite</h1>
+      <p class="sub">First run — create the administrator account.<br/>It is stored (hashed) in the server's ini file.</p>
+      <div class="field"><label>Username</label>
+        <input value=${user} autocomplete="username" autofocus onInput=${(e) => setUser(e.target.value)} /></div>
+      <div class="field"><label>Password (min 8 chars)</label>
+        <input type="password" value=${pass} autocomplete="new-password" onInput=${(e) => setPass(e.target.value)} /></div>
+      <div class="field"><label>Confirm password</label>
+        <input type="password" value=${pass2} autocomplete="new-password" onInput=${(e) => setPass2(e.target.value)} /></div>
+      <button class="btn primary" style="width:100%" disabled=${busy}>${busy ? "Creating…" : "Create account"}</button>
+      <div class="err">${err}</div>
+      <div style="font-size:11px;color:#5c6470;margin-top:8px">api: ${apiUrl("/api")}</div>
+    </form>
+  </div>`;
 }
 
 /* ================= login ================= */
@@ -475,6 +525,7 @@ function Main({ onLogout }) {
   const [peerRates, setPeerRates] = useState({});
   const [tunnelDialog, setTunnelDialog] = useState(null); // 'new' | 'rename' | 'raw'
   const [stats, setStats] = useState(null); // peer
+  const [accountOpen, setAccountOpen] = useState(false);
   const [protocols, setProtocols] = useState(["wg"]);
   const [online, setOnline] = useState(true);
 
@@ -648,6 +699,7 @@ function Main({ onLogout }) {
       <button class="tlink" onClick=${() => setTunnelDialog("raw")}>Raw</button>
       <button class="tlink danger" onClick=${deleteTunnel}>Delete</button>
       <button class="btn small" onClick=${() => loadPeers(config, false)}>Refresh</button>
+      <button class="tlink" onClick=${() => setAccountOpen(true)}>Account</button>
       <button class="btn small" onClick=${onLogout}>Sign out</button>
     </header>
 
@@ -671,6 +723,60 @@ function Main({ onLogout }) {
 
     ${stats ? html`<${StatsDialog} config=${config} peer=${stats}
         onClose=${() => setStats(null)} />` : null}
+
+    ${accountOpen ? html`<${AccountDialog} onClose=${() => setAccountOpen(false)} />` : null}
+  </div>`;
+}
+
+/* ================= account dialog ================= */
+function AccountDialog({ onClose }) {
+  const [user, setUser] = useState("");
+  const [current, setCurrent] = useState("");
+  const [pass, setPass] = useState("");
+  const [pass2, setPass2] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr("");
+    if (pass.length < 8) return setErr("Password must be at least 8 characters");
+    if (pass !== pass2) return setErr("Passwords do not match");
+    setBusy(true);
+    try {
+      const r = await api("/api/account", {
+        method: "POST",
+        body: { username: user.trim(), password: pass, current_password: current },
+      });
+      if (!r.status) throw new Error(r.message || "Failed");
+      toast("Credentials updated", "ok");
+      onClose();
+    } catch (e2) {
+      setErr(e2.message || "Failed");
+    } finally { setBusy(false); }
+  };
+
+  return html`
+  <div class="overlay" onClick=${(e) => { if (e.target.classList.contains("overlay")) onClose(); }}>
+    <form class="modal" onSubmit=${submit}>
+      <div class="head"><h3>Account</h3><button type="button" class="x" onClick=${onClose}>✕</button></div>
+      <div class="body">
+        <div class="field"><label>New username</label>
+          <input value=${user} autocomplete="username" onInput=${(e) => setUser(e.target.value)} /></div>
+        <div class="field"><label>New password (min 8 chars)</label>
+          <input type="password" value=${pass} autocomplete="new-password" onInput=${(e) => setPass(e.target.value)} /></div>
+        <div class="field"><label>Confirm new password</label>
+          <input type="password" value=${pass2} autocomplete="new-password" onInput=${(e) => setPass2(e.target.value)} /></div>
+        <div class="field"><label>Current password (required)</label>
+          <input type="password" value=${current} autocomplete="current-password" onInput=${(e) => setCurrent(e.target.value)} /></div>
+        <div class="muted" style="font-size:12px">Credentials are written to the server's ini file as a bcrypt hash.</div>
+        <div class="err">${err}</div>
+      </div>
+      <div class="foot">
+        <button type="button" class="btn" onClick=${onClose}>Cancel</button>
+        <button class="btn primary" disabled=${busy}>${busy ? "Saving…" : "Save"}</button>
+      </div>
+    </form>
   </div>`;
 }
 

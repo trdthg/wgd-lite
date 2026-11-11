@@ -45,6 +45,30 @@ wgd-api ── sqlite ── wgdashboard.db     (peer metadata + traffic history
 - WireGuard tunnels themselves live in the kernel: stopping the API never
   brings tunnels down.
 
+## First run (no credentials yet)
+
+The app is **single-user**: one administrator account, stored in the ini file as
+a bcrypt hash. There is no user table to manage.
+
+- **Fresh install** (no `password` in the ini): the UI shows a *create account*
+  screen instead of the login form. Submitting it writes `username` + bcrypt
+  `password` into the ini (and fills `remote_endpoint` from the request host if
+  it was empty), then logs you in. No SSH needed.
+- **Already configured**: normal login. Use the top-bar **Account** button to
+  change username/password — it requires the current password and rewrites the
+  ini in place (other sections are preserved).
+
+Reset a forgotten password by clearing the `password =` line in the ini and
+reloading the page — the create-account screen comes back:
+
+```bash
+sed -i 's/^password = .*/password =/' /path/to/wg-dashboard.ini
+systemctl restart wgd-api
+```
+
+> Security note: while the ini has no password, anyone who can reach the panel
+> can claim the account. Do the first-run setup before exposing it publicly.
+
 ## Deploy
 
 Assumes a Debian-ish box with Caddy already serving your domain, and wireguard
@@ -157,6 +181,7 @@ Auth: session cookie `authToken` (HttpOnly), set by `POST /api/authenticate`.
 ```
 POST /api/authenticate                       GET  /api/validateAuthentication
 GET  /api/signout
+POST /api/account        # first-run create (unauthenticated) / change (authenticated)
 GET  /api/getWireguardConfigurations         GET  /api/protocolsEnabled
 GET  /api/toggleWireguardConfiguration       POST /api/addWireguardConfiguration
 POST /api/renameWireguardConfiguration       POST /api/deleteWireguardConfiguration
@@ -179,5 +204,6 @@ language, framework) that passes the same suite is a drop-in replacement.
 - Traffic history only records peers with `status = running`.
 - The `<tunnel>_transfer` tables grow ~8k rows/day/tunnel; prune with SQL
   when needed.
-- Frontend pulls Preact/htm from esm.sh at runtime (3 requests). Fully
-  self-hosting them is a documented option in the UI's own comments.
+- Frontend pulls Preact/htm from esm.sh at runtime (3 requests). If that CDN is
+  unreachable from the browser the page renders blank — self-host the three
+  modules and swap the import URLs if that matters to you.

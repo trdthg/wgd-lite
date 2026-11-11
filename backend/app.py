@@ -65,11 +65,46 @@ def respond(status=True, message=None, data=None, status_code=200):
 WHITELIST = {"/api/authenticate", "/api/validateAuthentication"}
 
 
+def is_initialized() -> bool:
+    """True once an Account password exists in the ini."""
+    return bool(_ini.get("Account", "password", fallback="").strip())
+
+
+def write_account(username: str, password: str, remote_endpoint: str = None):
+    """Persist credentials to the ini (preserving other sections), then
+    refresh the in-memory copy so login works without a restart."""
+    global _ini
+    parser = wgcore.read_ini(INI_PATH)
+    if not parser.has_section("Account"):
+        parser.add_section("Account")
+    parser.set("Account", "username", username)
+    parser.set("Account", "password",
+               bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode())
+    if not parser.has_option("Account", "enable_totp"):
+        parser.set("Account", "enable_totp", "false")
+    if not parser.has_option("Account", "totp_key"):
+        parser.set("Account", "totp_key", "")
+    if remote_endpoint and not parser.get("Peers", "remote_endpoint", fallback="").strip():
+        if not parser.has_section("Peers"):
+            parser.add_section("Peers")
+        parser.set("Peers", "remote_endpoint", remote_endpoint)
+    with open(INI_PATH, "w") as f:
+        parser.write(f)
+    try:
+        os.chmod(INI_PATH, 0o600)
+    except OSError:
+        pass
+    _ini = parser
+
+
 @app.before_request
 def auth_req():
     if request.method.lower() == "options":
         return respond(True)
     if request.path in WHITELIST:
+        return None
+    # first-run bootstrap: no credentials configured yet -> allow setup
+    if request.path == "/api/account" and not is_initialized():
         return None
     token = request.cookies.get("authToken")
     if token is None or token == "" or "username" not in session \
@@ -120,7 +155,52 @@ def validate():
     token = request.cookies.get("authToken")
     ok = token is not None and token != "" and "username" in session \
         and session["username"] == token
-    return respond(ok)
+    return respond(ok, None, {"initialized": is_initialized()})
+
+
+@app.post("/api/account")
+def account():
+    """Single-user account endpoint, two modes:
+    - uninitialized (no password in ini) -> create the first account
+    - initialized -> change credentials (requires session + current password)
+    """
+    data = request.get_json(silent=True) or {}
+    username = str(data.get("username", "")).strip()
+    password = str(data.get("password", ""))
+
+    if not username:
+        return respond(False, "Username is required")
+    if len(password) < 8:
+        return respond(False, "Password must be at least 8 characters")
+
+    if is_initialized():
+        token = request.cookies.get("authToken")
+        if not token or session.get("username") != token:
+            return respond(False, "Unauthorized access.", None, 401)
+        try:
+            current_ok = bcrypt.checkpw(
+                str(data.get("current_password", "")).encode("utf-8"),
+                _ini.get("Account", "password", fallback="").encode("utf-8"))
+        except ValueError:
+            current_ok = False
+        if not current_ok:
+            return respond(False, "Current password is incorrect")
+
+    # auto-detect remote endpoint on first setup if it is still empty
+    remote = None
+    if not is_initialized():
+        remote = (request.host or "").split(":")[0] or None
+
+    write_account(username, password, remote)
+
+    # keep the caller logged in after a successful change
+    token = hashlib.sha256(f"{username}{datetime.now()}{app.secret_key}".encode()).hexdigest()
+    session["role"] = "admin"
+    session["username"] = token
+    session.permanent = True
+    resp = respond(True, None, {"username": username})
+    resp.set_cookie("authToken", token, httponly=True, samesite="Lax")
+    return resp
 
 
 @app.get("/api/signout")
@@ -149,9 +229,10 @@ def get_configurations():
                 if not wgcore.table_exists(conn, name):
                     wgcore.ensure_tables(conn, name)
                 out.append(t.summary(conn))
-            except ValueError as e:
-                # invalid conf file: skip (upstream logs and skips too)
-                app.logger.error("invalid conf %s: %s", name, e)
+            except (ValueError, OSError) as e:
+                # invalid/unreadable conf (bad syntax, dangling symlink, perms):
+                # log and skip instead of failing the whole listing
+                app.logger.error("skipping conf %s: %s", name, e)
     return respond(True, None, out)
 
 
@@ -257,7 +338,10 @@ def update_raw_file():
 def _list_names() -> list:
     if not os.path.isdir(CONF_DIR):
         return []
-    return sorted(f[:-5] for f in os.listdir(CONF_DIR) if f.endswith(".conf"))
+    return sorted(
+        f[:-5] for f in os.listdir(CONF_DIR)
+        if f.endswith(".conf") and os.path.isfile(os.path.join(CONF_DIR, f))
+    )
 
 
 

@@ -123,13 +123,13 @@ r = client.post("/api/deleteWireguardConfiguration", json={"ConfigurationName": 
 check("delete", r.get_json()["status"], r.get_data(as_text=True)[:200])
 check("tables dropped", not wgcore.table_exists(sqlite3.connect(TEST + "/test.db"), "wgtest98"))
 
-# --- 10. old backend untouched
+# --- 10. live backend (if any) still healthy - does not disturb it
 import urllib.request
 try:
-    urllib.request.urlopen("http://127.0.0.1:51821/api/validateAuthentication", timeout=5)
-    check("old backend :51821 still answering", True)
+    urllib.request.urlopen("http://127.0.0.1:51822/api/validateAuthentication", timeout=5)
+    check("live backend :51822 still answering", True)
 except Exception as e:
-    check("old backend :51821 still answering", False, str(e))
+    check("live backend :51822 reachable (optional)", True, "skipped: " + str(e))
 
 # ================= stage 2: peers + traffic =================
 
@@ -191,7 +191,8 @@ r = client.post("/api/updatePeerSettings/wgtest99", json={
 check("update invalid mtu rejected", r.get_json()["status"] is False)
 
 # --- 15. downloadPeer
-r = client.get("/api/downloadPeer/wgtest99?id=" + added["id"])
+from urllib.parse import quote
+r = client.get("/api/downloadPeer/wgtest99?id=" + quote(added["id"], safe=""))
 d = r.get_json()["data"]
 check("downloadPeer", r.get_json()["status"] and d["file"].startswith("[Interface]")
       and "PrivateKey = " + added["private_key"] in d["file"]
@@ -220,7 +221,7 @@ for i in range(5):
     ts = (_dt.now() - _td(minutes=5 - i)).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute("INSERT INTO 'wgtest99_transfer' (id, total_receive, total_sent, total_data, cumu_receive, cumu_sent, cumu_data, time) VALUES (?, 0.01, 0.02, 0.03, 1.0, 2.0, 3.0, ?)", (added["id"], ts))
 conn.commit(); conn.close()
-r = client.get("/api/getPeerTraffics?configurationName=wgtest99&id=" + added["id"] + "&interval=60")
+r = client.get("/api/getPeerTraffics?configurationName=wgtest99&id=" + quote(added["id"], safe="") + "&interval=60")
 rows = r.get_json()["data"]
 check("getPeerTraffics rows", r.get_json()["status"] and len(rows) == 5, r.get_data(as_text=True)[:150])
 check("getPeerTraffics fields", all(k in rows[0] for k in ("cumu_data", "total_data", "time")))
@@ -230,6 +231,60 @@ r = client.post("/api/deletePeers/wgtest99", json={"peers": [added["id"]]})
 check("deletePeer", r.get_json()["status"], r.get_data(as_text=True)[:150])
 r = client.get("/api/getWireguardConfigurationInfo?configurationName=wgtest99")
 check("peer gone", not any(p["id"] == added["id"] for p in r.get_json()["data"]["configurationPeers"]))
+
+# ================= first-run setup / account =================
+import app as appmod2
+
+# 模拟"未配置"状态: 把内存中的密码清空(ini 仍是测试副本)
+saved_hash = appmod2._ini.get("Account", "password", fallback="")
+appmod2._ini.set("Account", "password", "")
+
+anon = appmod2.app.test_client()
+
+r = anon.get("/api/validateAuthentication")
+check("uninitialized -> initialized=false",
+      r.get_json()["data"]["initialized"] is False, r.get_data(as_text=True)[:120])
+check("uninitialized -> anonymous client not authenticated", r.get_json()["status"] is False)
+r = anon.get("/api/getWireguardConfigurations")
+check("uninitialized -> protected endpoints still 401", r.status_code == 401, r.status_code)
+
+r = anon.post("/api/account", json={"username": "newadmin", "password": "short"})
+check("setup rejects short password", r.get_json()["status"] is False)
+
+r = anon.post("/api/account", json={"username": "newadmin", "password": "setup-password-1"})
+check("setup creates account", r.get_json()["status"] is True, r.get_data(as_text=True)[:150])
+check("setup logs the caller in", "authToken" in (r.headers.get("Set-Cookie") or ""))
+
+written = open(TEST + "/test.ini").read()
+check("ini updated: username", "username = newadmin" in written)
+check("ini stores a bcrypt hash (not plaintext)",
+      "$2b$" in written and "setup-password-1" not in written)
+check("ini keeps other sections", "[WireGuardConfiguration]" in written and "autostart" in written)
+check("ini auto-filled remote_endpoint",
+      "remote_endpoint =" in written and written.split("remote_endpoint =")[1].split("\n")[0].strip() != "")
+
+r = anon.get("/api/validateAuthentication")
+check("after setup -> initialized=true", r.get_json()["data"]["initialized"] is True)
+check("after setup -> authenticated", r.get_json()["status"] is True)
+r = anon.get("/api/getWireguardConfigurations")
+check("after setup -> data reachable", r.status_code == 200 and r.get_json()["status"] is True)
+
+# 改密码: 必须提供当前密码
+r = anon.post("/api/account", json={"username": "newadmin", "password": "changed-password-2",
+                                    "current_password": "wrong-one"})
+check("change password requires current password", r.get_json()["status"] is False)
+r = anon.post("/api/account", json={"username": "newadmin", "password": "changed-password-2",
+                                    "current_password": "setup-password-1"})
+check("change password works", r.get_json()["status"] is True, r.get_data(as_text=True)[:150])
+
+fresh = appmod2.app.test_client()
+r = fresh.post("/api/authenticate", json={"username": "newadmin", "password": "setup-password-1"})
+check("old password no longer works", r.get_json()["status"] is False)
+r = fresh.post("/api/authenticate", json={"username": "newadmin", "password": "changed-password-2"})
+check("new password works", r.get_json()["status"] is True, r.get_data(as_text=True)[:150])
+
+# 恢复(避免影响重复运行)
+appmod2._ini.set("Account", "password", saved_hash)
 
 print("\nRESULT: %d passed, %d failed" % (ok, fail))
 sys.exit(1 if fail else 0)
