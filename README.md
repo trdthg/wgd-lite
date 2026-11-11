@@ -51,21 +51,37 @@ Assumes a Debian-ish box with Caddy already serving your domain, and wireguard
 tools installed. The backend reuses WGDashboard's config/DB files, so if you
 are migrating from WGDashboard your peers and traffic history carry over.
 
+### Suggested layout
+
+Everything lives under one directory (easy to back up or move):
+
+```
+/opt/wgd-lite/
+├── backend/            # app.py, wgcore.py, wsgi.py, requirements.txt
+├── frontend/index.html # served by Caddy
+├── data/               # wg-dashboard.ini + db/wgdashboard.db  (chmod 600 the ini)
+└── venv/               # python venv (recreate if you move the tree!)
+```
+
 ### 1. Backend
 
 ```bash
-mkdir -p /opt/wgd-api && cd /opt/wgd-api
-# copy backend/ here
+mkdir -p /opt/wgd-lite && cd /opt/wgd-lite
+# copy backend/ and frontend/ here
 python3 -m venv venv
-./venv/bin/pip install -r requirements.txt
+./venv/bin/pip install -r backend/requirements.txt
 ```
 
 `backend/systemd/wgd-api.service` is a working unit template — copy it to
-`/etc/systemd/system/`, point the `Environment=` lines at your real paths, then:
+`/etc/systemd/system/`, point the `WorkingDirectory=`/`Environment=` lines at
+your real paths, then:
 
 ```bash
 systemctl daemon-reload && systemctl enable --now wgd-api
 ```
+
+> Note: a venv hard-codes its absolute path in script shebangs. If you move the
+> tree, recreate the venv (`python3 -m venv venv && pip install -r ...`).
 
 Environment variables:
 
@@ -81,7 +97,7 @@ The ini keys used: `Account.username/password/enable_totp/totp_key`,
 
 ### 2. Frontend
 
-Drop `frontend/index.html` anywhere Caddy can serve, e.g.:
+Serve `frontend/index.html` from Caddy (must be the same origin as the API), e.g.:
 
 ```caddy
 wg.example.com {
@@ -89,7 +105,7 @@ wg.example.com {
 		reverse_proxy 127.0.0.1:51822
 	}
 	handle {
-		root * /opt/wgd-lite
+		root * /opt/wgd-lite/frontend
 		try_files {path} /index.html
 		file_server
 	}
