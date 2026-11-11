@@ -61,6 +61,12 @@
 
   .pill{font-size:12px;font-weight:normal;color:var(--muted)}
   .pill.ok{color:var(--ok)}
+  .st{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;
+    vertical-align:middle;background:#c9cdd3}
+  .st.on{background:var(--ok)}
+  th.sort{cursor:pointer;user-select:none;white-space:nowrap}
+  th.sort:hover{color:var(--accent)}
+  th .arrow{color:var(--accent);font-size:10px}
   .switch{position:relative;width:30px;height:16px;background:#c9cdd3;border:1px solid var(--muted);
     border-radius:3px;padding:0;cursor:pointer;vertical-align:middle}
   .switch::after{content:"";position:absolute;top:1px;left:1px;width:12px;height:12px;
@@ -806,7 +812,54 @@ function ViewDialog({ data, onClose, onDownload }) {
 
 /* ================= peers tab ================= */
 function PeersTab({ peers, monthly, restricted, peerRates, onEdit, onView, onDownload, onToggleEnabled, onDelete, onStats }) {
-  const rows = peers.slice().sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+  const [sortKey, setSortKey] = useState("");
+  const [sortDir, setSortDir] = useState(1);
+
+  const isOn = (p) => !(restricted.has(p.id) || p.restricted) && p.status === "running";
+
+  const hsSeconds = (h) => {
+    const parts = String(h || "").split(":");
+    if (parts.length !== 3) return Infinity;              // "No Handshake" / "—"
+    const [a, b, c] = parts.map(Number);
+    if ([a, b, c].some(Number.isNaN)) return Infinity;
+    return a * 3600 + b * 60 + c;
+  };
+
+  const sortValue = (p, key) => {
+    switch (key) {
+      case "name": return String(p.name || "").toLowerCase();
+      case "ip": return String(p.allowed_ip || "");
+      case "endpoint": return String(p.endpoint || p.remote_endpoint || "");
+      case "handshake": return hsSeconds(p.latest_handshake);
+      case "in": return (peerRates[p.id] && peerRates[p.id].rxps) ?? -1;
+      case "out": return (peerRates[p.id] && peerRates[p.id].txps) ?? -1;
+      case "rx": return (monthly && monthly.peers[p.id] && monthly.peers[p.id].receive) || 0;
+      case "tx": return (monthly && monthly.peers[p.id] && monthly.peers[p.id].sent) || 0;
+      default: return 0;
+    }
+  };
+
+  const toggleSort = (key) => {
+    if (sortKey === key) setSortDir((d) => -d);
+    else { setSortKey(key); setSortDir(1); }
+  };
+
+  const rows = peers.slice().sort((a, b) => {
+    if (!sortKey) {                       // default: online first, then name
+      const oa = isOn(a), ob = isOn(b);
+      if (oa !== ob) return oa ? -1 : 1;
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    }
+    const va = sortValue(a, sortKey), vb = sortValue(b, sortKey);
+    const cmp = (typeof va === "number" && typeof vb === "number")
+      ? va - vb
+      : String(va).localeCompare(String(vb));
+    return cmp * sortDir;
+  });
+
+  const Th = ({ k, children }) => html`<th class=${k ? "sort" : ""}
+      onClick=${k ? () => toggleSort(k) : null}>${children}${
+      sortKey === k ? html`<span class="arrow">${sortDir > 0 ? " ▲" : " ▼"}</span>` : null}</th>`;
 
   return html`
   <${Fragment}>
@@ -815,8 +868,11 @@ function PeersTab({ peers, monthly, restricted, peerRates, onEdit, onView, onDow
       : html`
       <table>
         <thead><tr>
-          <th>Name</th><th>Status</th><th>Enabled</th><th>Allowed IP</th><th>Endpoint</th>
-          <th>Latest handshake</th><th>IN rate</th><th>OUT rate</th><th>RX (month)</th><th>TX (month)</th><th></th>
+          <${Th} k="name">Name</${Th}><th>Enabled</th>
+          <${Th} k="ip">Allowed IP</${Th}><${Th} k="endpoint">Endpoint</${Th}>
+          <${Th} k="handshake">Latest handshake</${Th}>
+          <${Th} k="in">IN rate</${Th}><${Th} k="out">OUT rate</${Th}>
+          <${Th} k="rx">RX (month)</${Th}><${Th} k="tx">TX (month)</${Th}><th></th>
         </tr></thead>
         <tbody>
         ${rows.map((p) => {
@@ -825,13 +881,9 @@ function PeersTab({ peers, monthly, restricted, peerRates, onEdit, onView, onDow
           const tx = (Number(p.total_sent) || 0) + (Number(p.cumu_sent) || 0);
           return html`
           <tr key=${p.id}>
-            <td><button type="button" class="tlink" title="Traffic statistics"
-                onClick=${() => onStats(p)}>${p.name || "untitled"}</button></td>
-            <td>${disabled
-              ? html`<span class="pill off">disabled</span>`
-              : p.status === "running"
-                ? html`<span class="pill ok">running</span>`
-                : html`<span class="pill off">stopped</span>`}</td>
+            <td><span class=${"st" + (isOn(p) ? " on" : "")}
+                  title=${disabled ? "disabled" : (isOn(p) ? "running" : "stopped")}></span><button type="button" class="tlink"
+                title="Traffic statistics" onClick=${() => onStats(p)}>${p.name || "untitled"}</button></td>
             <td><button type="button" class=${"switch" + (disabled ? "" : " on")}
                 title=${disabled ? "Enable peer" : "Disable peer"}
                 aria-pressed=${!disabled} onClick=${() => onToggleEnabled(p)}></button></td>
